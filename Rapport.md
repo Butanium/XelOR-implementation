@@ -20,19 +20,19 @@ Ainsi la nouvelle formule obtenue est équivalente à la première.
 
 ## Question 3
 
-Remarque : La propriété donnée est fausse : $(p \oplus p) \land x$ n'est pas satisfiable, mais $x\[ \neg p / p \] = x$ l'est. Pour que la propriété soit vraie, il faut que $p$ ne soit pas utilisée dans $G$.
+Remarque : La propriété donnée est fausse : $(p \oplus p) \land x$ n'est pas satisfiable, mais $x[ \neg p / p ] = x$ l'est. Pour que la propriété soit vraie, il faut que $p$ ne soit pas utilisée dans $G$.
 
 Soit $\rho$ valuation telle que $\rho$ satisfait la formule $(p \oplus G) \land F$. Alors en particulier $\rho$ satisfait la formule $p \oplus G$.
-On doit donc avoir $\rho(G) = 1 - \rho(p)$, et par suite $\rho(\neg G) = \rho(p)$. On en déduit $\rho(F) = \rho(F\[ \neg G /p \]) = 1$. Ainsi $F\[ \neg G /p \]$ est satisfiable.
+On doit donc avoir $\rho(G) = 1 - \rho(p)$, et par suite $\rho(\neg G) = \rho(p)$. On en déduit $\rho(F) = \rho(F[ \neg G /p ]) = 1$. Ainsi $F[ \neg G /p ]$ est satisfiable.
 
-Réciproquement, supposons que $\rho$ satisfait $F\[ \neg G / p \]$. On définit $\rho' := \rho \[ p \mapsto 1-\rho(G) \]$.
-Ainsi $\rho'(p \oplus G) = 1$, et $\rho'(\neg G) = \rho'(p)$ car $p$ n'est pas utilisée dans $G$. D'où $\rho'(F) = \rho'(F \[ \neg G / p \] = 1$, et donc $(p \oplus G) \land F$ est satisfaite par $\rho'$.
+Réciproquement, supposons que $\rho$ satisfait $F[ \neg G / p ]$. On définit $\rho' := \rho [ p \mapsto 1-\rho(G) ]$.
+Ainsi $\rho'(p \oplus G) = 1$, et $\rho'(\neg G) = \rho'(p)$ car $p$ n'est pas utilisée dans $G$. D'où $\rho'(F) = \rho'(F [ \neg G / p ]) = 1$, et donc $(p \oplus G) \land F$ est satisfaite par $\rho'$.
 
-Donc $(p \oplus G) \land F$ et $F\[ \neg G / p \]$ sont bien équisatisfiable (à condition que $p$ ne soit pas utilisée dans $G$).
+Donc $(p \oplus G) \land F$ et $F[ \neg G / p ]$ sont bien équisatisfiable (à condition que $p$ ne soit pas utilisée dans $G$).
 
 ## Question 4
 
-La formule est de la forme $(p \oplus G) \land F$ avec $G = r \oplus s$, donc d'après la question 3, elle est équisatisfiable à $F \[ \neg G / p \]$.
+La formule est de la forme $(p \oplus G) \land F$ avec $G = r \oplus s$, donc d'après la question 3, elle est équisatisfiable à $F [ \neg G / p ]$.
 Or $\neg G = \neg (r \oplus s) \equiv \neg r \oplus s$, donc la formule initiale est équisatisfiable à :
 
 $$
@@ -69,8 +69,8 @@ $$
 ## Question 5
 
 L'algorithme considère la première clause de la formule.
-Si elle est vide, la formule n'est pas satisfiable.
-Si elle ne contient qu'un littéral, on modifie la valuation courante puis on calcule la satisfiabilité du reste de la formule.
-Sinon, l'algorithme modifie si besoin la clause en une clause équisatisfiable avec un littéral positif. Ainsi, la nouvelle formule est de la forme $(p \oplus G) \land F$. On calcule ensuite récursivement la satisfiabilité de $F \[ \neg G / p \]$, qui donne exactement la satisfiabilité de la formule initiale.
+- Si elle est vide, la formule n'est pas satisfiable. 
+- Si elle ne contient qu'un littéral, on modifie la valuation courante puis on calcule la satisfiabilité du reste de la formule.
+- Sinon, l'algorithme modifie si besoin la clause en une clause équisatisfiable avec un littéral positif. Ainsi, la nouvelle formule est de la forme $(p \oplus G) \land F$. On calcule ensuite récursivement la satisfiabilité de $F [ \neg G / p ]$, qui donne exactement la satisfiabilité de la formule initiale.
 
 L'algorithme termine puisque le nombre de clauses décroit à chaque appel récursif. La question 3 assure sa correction.

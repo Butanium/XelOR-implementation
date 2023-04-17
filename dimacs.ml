@@ -29,4 +29,7 @@ let rec parse_cnf_file = function
   | a :: l -> parse_cnf_file l
 
 let parse x =
-  Str.split (Str.regexp "[ \n\t\r\012]+") (read_from_file x) |> parse_cnf_file
+  let f, nb =
+    Str.split (Str.regexp "[ \n\t\r\012]+") (read_from_file x) |> parse_cnf_file
+  in
+  (Array.of_list f, nb)

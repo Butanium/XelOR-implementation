@@ -1,32 +1,12 @@
-exception Unsat
+type literal = int
+type clause = literal list
+type formula = clause array
 
-let rec remove a l =
-  match l with [] -> [] | x :: q -> if x = a then q else x :: remove a q
+open Util
 
-let rec print_clause c =
-  match c with
-  | [] -> ()
-  | l :: c2 ->
-      print_int l;
-      print_char ' ';
-      print_clause c2
+exception Unsat of int list
 
-let rec print_form f =
-  match f with
-  | [] -> ()
-  | c :: f2 ->
-      print_clause c;
-      print_string "\n";
-      print_form f2
-
-let print_val rho =
-  let len = Array.length rho in
-  for i = 1 to len - 1 do
-    print_int rho.(i);
-    print_char ' '
-  done;
-  print_string "\n"
-
+(** Renvoie le nombre d'occurences de i et de ¬i *)
 let rec count c i =
   match c with
   | [] -> (0, 0)
@@ -36,7 +16,7 @@ let rec count c i =
       else if l = -i then (pos, neg + 1)
       else (pos, neg)
 
-(* Evalue une clause de xor *)
+(** Evalue une clause de xor *)
 let rec eval_xor f rho =
   match f with
   | [] -> 0
@@ -44,54 +24,67 @@ let rec eval_xor f rho =
       let e = eval_xor f2 rho in
       if l > 0 then (rho.(l) + e) mod 2 else (1 - rho.(-l) + e) mod 2
 
-(* Négation d'une clause de xor *)
+(** Négation d'une clause de xor *)
 let neg_xor c = match c with [] -> [] | l :: c2 -> -l :: c2
 
-(* Remplace le littéral l (positif) par la clause g dans la clause c *)
-let rec replace_neg_clause l g c =
-  match c with
-  | [] -> []
-  | l2 :: c2 when l2 = l -> neg_xor g @ c2
-  | l2 :: c2 when l2 = -l -> g @ c2
-  | l2 :: c2 -> l2 :: replace_neg_clause l g c2
+let causality : int list array ref = ref [||]
+let add_causality i j = !causality.(j) <- i :: !causality.(i)
 
-(* Simplifie une clause si une variable apparaît plusieurs fois *)
-let simpl_clause nb_vars c =
+(** Remplace le littéral l (positif) par la clause g dans la clause c *)
+let replace_neg_clause l g g_ind c_ind c =
+  let rec aux add_causal = function
+    | [] -> []
+    | l2 :: c2 when l2 = l ->
+        if add_causal then add_causality g_ind c_ind;
+        neg_xor g @ c2
+    | l2 :: c2 when l2 = -l ->
+        if add_causal then add_causality g_ind c_ind;
+        g @ c2
+    | l2 :: c2 -> l2 :: aux add_causal c2
+  in
+  aux true c
+
+(** Simplifie une clause si une variable apparaît plusieurs fois *)
+let simpl_clause nb_vars ind c =
   let res = ref c in
   for i = 1 to nb_vars do
     let pos, neg = count !res i in
-    if pos = 2 then res := remove i (remove i !res)
-    else if neg = 2 then res := remove (-i) (remove (-i) !res)
-    else if pos = 1 && neg = 1 then res := neg_xor (remove i (remove (-i) !res))
+    if pos = 2 then res := remove i !res
+    else if neg = 2 then res := remove (-i) !res
+    else if pos = 1 && neg = 1 then res := neg_xor (remove_all [ i; -i ] !res)
   done;
+  if !res = [] then raise @@ Unsat !causality.(ind);
   !res
 
-(* Remplace le littéral l (positif) par la clause g dans la formule f,
-   et simplifie la formule *)
-let replace_neg l g f nb_vars =
-  List.map (simpl_clause nb_vars) (List.map (replace_neg_clause l g) f)
+(** Remplace le littéral l (positif) par la clause g dans la formule f,
+    et simplifie la formule *)
+let replace_neg ?(print_trace = false) start l g (f : formula) nb_vars : unit =
+  mapi_in_place start (replace_neg_clause l g start) f;
+  mapi_in_place start (simpl_clause nb_vars) f
 
-(* Renvoie une valuation satisfaisant la formule f en modifiant la
-   valuation rho, ou une exception si la formule n'est pas satisfiable *)
-let rec xelor f rho nb_vars =
-  match f with
-  | [] -> rho
-  | c :: f2 -> (
+(** Renvoie une valuation satisfaisant la formule f en modifiant la
+    valuation rho, ou une exception si la formule n'est pas satisfiable *)
+let xelor ?(print_trace = false) (f : formula) rho nb_vars =
+  causality := Array.make nb_vars [];
+  let f' = Array.copy f in
+  (* TODO: add try with here *)
+  (* todo: use print_trace *)
+  Array.iteri
+    (fun start c ->
       match c with
-      | [] -> raise Unsat
-      | [ l ] when l > 0 ->
-          rho.(l) <- 1;
-          rho
-      | [ l ] -> rho
+      | [] -> raise @@ Unsat []
+      | [ l ] when l > 0 -> rho.(l) <- 1
+      | [ l ] -> ()
       | l1 :: l2 :: c2 ->
           let l, g =
             if l1 > 0 then (l1, l2 :: c2)
             else if l2 > 0 then (l2, l1 :: c2)
             else (-l1, -l2 :: c2)
           in
-          let rho2 = xelor (replace_neg l g f2 nb_vars) rho nb_vars in
-          rho2.(l) <- 1 - eval_xor g rho;
-          rho2)
+          replace_neg ~print_trace start l g f nb_vars;
+          rho.(l) <- 1 - eval_xor g rho)
+    f';
+  rho
 
 let print_result f nb_vars =
   let rho = Array.make (nb_vars + 1) 0 in
