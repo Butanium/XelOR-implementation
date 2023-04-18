@@ -4,7 +4,8 @@ type formula = clause array
 
 open Util
 
-exception Unsat of int list
+exception Unsat_causal of int list
+exception Unsat
 
 (** Renvoie le nombre d'occurences de i et de ¬i *)
 let rec count c i =
@@ -45,7 +46,7 @@ let replace_neg_clause l g g_ind c_ind c =
   aux true c
 
 (** Simplifie une clause si une variable apparaît plusieurs fois *)
-let simpl_clause nb_vars ind c =
+let simpl_clause ?(print_trace = false) nb_vars ind c =
   let res = ref c in
   for i = 1 to nb_vars do
     let pos, neg = count !res i in
@@ -53,46 +54,67 @@ let simpl_clause nb_vars ind c =
     else if neg = 2 then res := remove (-i) !res
     else if pos = 1 && neg = 1 then res := neg_xor (remove_all [ i; -i ] !res)
   done;
-  if !res = [] then raise @@ Unsat !causality.(ind);
+  if !res = [] && not print_trace then raise @@ Unsat_causal !causality.(ind);
   !res
 
 (** Remplace le littéral l (positif) par la clause g dans la formule f,
     et simplifie la formule *)
 let replace_neg ?(print_trace = false) start l g (f : formula) nb_vars : unit =
+  let save = Array.copy f in
+  if print_trace then (
+    Printf.printf "Replace %d by " l;
+    print_clause @@ neg_xor g;
+    print_newline ());
   mapi_in_place start (replace_neg_clause l g start) f;
-  mapi_in_place start (simpl_clause nb_vars) f
+  mapi_in_place start (simpl_clause ~print_trace nb_vars) f;
+  if print_trace then
+    Array.iter2
+      (fun c c' ->
+        if c <> c' then print_clause c;
+        print_string " -> ";
+        print_clause c';
+        print_newline ())
+      save f
 
 (** Renvoie une valuation satisfaisant la formule f en modifiant la
     valuation rho, ou une exception si la formule n'est pas satisfiable *)
-let xelor ?(print_trace = false) (f : formula) rho nb_vars =
+let rec xelor ?(print_trace = false) (f : formula) nb_vars : int array =
+  let rho = Array.make (nb_vars + 1) 0 in
   causality := Array.make nb_vars [];
   let f' = Array.copy f in
-  (* TODO: add try with here *)
-  (* todo: use print_trace *)
-  Array.iteri
-    (fun start c ->
-      match c with
-      | [] -> raise @@ Unsat []
-      | [ l ] when l > 0 -> rho.(l) <- 1
-      | [ l ] -> ()
-      | l1 :: l2 :: c2 ->
-          let l, g =
-            if l1 > 0 then (l1, l2 :: c2)
-            else if l2 > 0 then (l2, l1 :: c2)
-            else (-l1, -l2 :: c2)
-          in
-          replace_neg ~print_trace start l g f nb_vars;
-          rho.(l) <- 1 - eval_xor g rho)
-    f';
+  (try
+     Array.iteri
+       (fun start c ->
+         match c with
+         | [] -> raise @@ Unsat_causal []
+         | [ l ] when l > 0 -> rho.(l) <- 1
+         | [ l ] -> ()
+         | l1 :: l2 :: c2 ->
+             let l, g =
+               if l1 > 0 then (l1, l2 :: c2)
+               else if l2 > 0 then (l2, l1 :: c2)
+               else (-l1, -l2 :: c2)
+             in
+             replace_neg ~print_trace (start + 1) l g f' nb_vars;
+             rho.(l) <- 1 - eval_xor g rho)
+       f'
+   with Unsat_causal clause_ids when not print_trace ->
+     Printf.eprintf "Unsat_causal: %s\n"
+       (String.concat ", " @@ List.map string_of_int clause_ids);
+     let clauses = List.map (fun i -> f.(i)) clause_ids in
+     let f'' = Array.of_list clauses in
+     xelor ~print_trace:true f'' nb_vars |> ignore);
+  if print_trace then (
+    print_string "Therefore there is no solution";
+    raise Unsat);
   rho
 
 let print_result f nb_vars =
-  let rho = Array.make (nb_vars + 1) 0 in
   try
-    let modele = xelor f rho nb_vars in
+    let modele = xelor f nb_vars in
     print_string "SAT\n";
     print_val modele
-  with Unsat -> print_string "UNSAT\n"
+  with Unsat -> ()
 
 (* Exemples *)
 
@@ -102,5 +124,6 @@ let ex2 = [ [ 1; 2 ]; [ 1; -3 ]; [ -2; 3 ] ]
 (* let () = print_result ex2 4 *)
 
 let () =
+  Printexc.record_backtrace true;
   let f, nb_vars = Dimacs.parse Sys.argv.(1) in
   print_result f nb_vars
