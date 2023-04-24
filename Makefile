@@ -4,5 +4,5 @@ xelor: xelor.ml dimacs.ml
 clean:
 	rm -f *.cmi *.cmx *.o xelor
 
-test:
-	./xelor test_sat.cnf
+test: # 1) call make xelor 2) run ./xelor on all files of directory tests in a row
+	make xelor && for file in tests/*; do ./xelor $$file; done
