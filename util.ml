@@ -14,23 +14,12 @@ let rec remove el l = List.filter (( <> ) el) l
 (** Supprime toutes les occurences des éléments de els dans l *)
 let remove_all els l = List.fold_left (fun acc el -> remove el acc) l els
 
-let print_clause c =
-  List.iter
-    (fun l ->
-      print_int l;
-      print_char ' ')
-    c
+let clause_string c = String.concat " ⊕  " (List.map string_of_int c)
+let print_clause c = print_string (clause_string c)
+  
+let form_string f = String.concat " /\\ " (List.map clause_string @@ Array.to_list f)
 
-let print_form f =
-  List.iter
-    (fun c ->
-      print_clause c;
-      print_newline ())
-    f
+let print_form f = print_string (form_string f)
 
 let print_val rho =
-  Array.iter
-    (fun x ->
-      print_int x;
-      print_char ' ')
-    rho
+  Array.iteri (fun i x -> if i <> 0 then Printf.printf "%d: %d\n" i x) rho
