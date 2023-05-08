@@ -23,10 +23,11 @@ let rec eval_xor f rho =
   | [] -> 0
   | l :: f2 ->
       let e = eval_xor f2 rho in
-      if l > 0 then (rho.(l) + e) mod 2 else (1 - rho.(-l) + e) mod 2
+      if l > 0 then ((abs rho.(l)) + e) mod 2 else (1 - (abs rho.(-l)) + e) mod 2
 
 (** Négation d'une clause de xor *)
-let neg_xor c = match c with [] -> [] | l :: c2 -> -l :: c2
+let neg_xor c = match c with [] -> [0] | [0] -> [] | l :: c2 -> -l :: c2
+(* On note [0] pour la clause vraie, tandis que [] est la clause vide qui est fausse *)
 
 let causality : int list array ref = ref [||]
 
@@ -59,8 +60,6 @@ let simpl_clause ?(print_unsat_trace = false) nb_vars ind c =
     else if pos = 1 && neg = 1 then res := neg_xor (remove_all [ i; -i ] !res)
   done;
   if !res = [] && not print_unsat_trace then
-    (* Printf.eprintf "Unsat_causal: %d\n%!" ind; *)
-    (*todo remove*)
     raise @@ Unsat_causal (ind :: !causality.(ind));
   !res
 
@@ -69,7 +68,6 @@ let simpl_clause ?(print_unsat_trace = false) nb_vars ind c =
 let replace_neg ?(print_unsat_trace = false) start l g (f : formula) nb_vars :
     unit =
   let save = Array.copy f in
-  (*debug*)
   if print_unsat_trace then
     Printf.printf "Replace %d by %s = ¬(%s) in %s:\n" l
       (clause_string @@ neg_xor g)
@@ -95,7 +93,7 @@ let rec xelor ?(print_unsat_trace = false) (f : formula) nb_vars : int array =
   if print_unsat_trace then
     Printf.printf "The formula %s\nis not satisfiable.\nProof:\n"
     @@ form_string f;
-  let rho = Array.make (nb_vars + 1) 0 in
+  let rho = Array.make (nb_vars + 1) (-1) in
   causality := Array.make (Array.length f) [];
   let f' = Array.copy f in
   (try
@@ -104,10 +102,14 @@ let rec xelor ?(print_unsat_trace = false) (f : formula) nb_vars : int array =
        else
          match f'.(i) with
          | [] -> if not print_unsat_trace then raise @@ Unsat_causal [] else ()
-         | [ l ] when l > 0 ->
-             rho.(l) <- 1;
-             aux (i + 1)
-         | [ l ] -> aux (i + 1)
+         | [ l ] -> (match l, rho.(abs l) with
+                      | 0, _ -> ()
+                      | l, -1 when l > 0 -> rho.(l) <- 1
+                      | l, -1 -> rho.(-l) <- 0
+                      | l, 1 when l > 0 -> ()
+                      | l, 0 -> ()
+                      | _ -> (* TODO affichage si print_unsat_trace *) raise Unsat);
+                    aux (i + 1)
          | l1 :: l2 :: c2 ->
              if print_unsat_trace then (
                Printf.printf "Processing clause: ";
@@ -120,13 +122,12 @@ let rec xelor ?(print_unsat_trace = false) (f : formula) nb_vars : int array =
              in
              replace_neg ~print_unsat_trace (i + 1) l g f' nb_vars;
              aux (i + 1);
-             rho.(l) <- 1 - eval_xor g rho
+             let val_l = 1 - eval_xor g rho in
+             if rho.(l) = 1 - val_l then (* TODO affichage si print_unsat_trace *) raise Unsat
+             else rho.(l) <- val_l
      in
      aux 0
    with Unsat_causal clause_ids when not print_unsat_trace ->
-     (* Printf.eprintf "Unsat_causal: %s\n%!"
-        (String.concat ", " @@ List.map string_of_int clause_ids); *)
-     (*todo remove*)
      let clauses = List.map (fun i -> f.(i)) clause_ids in
      let f'' = Array.of_list clauses in
      xelor ~print_unsat_trace:true f'' nb_vars |> ignore);
@@ -139,11 +140,11 @@ let print_result f nb_vars =
   print_newline ();
   try
     let modele = xelor f nb_vars in
-    Printf.printf "The formula %s\nis satisfiable with the following model:\n"
+    Printf.printf "SAT\n\nThe formula %s\nis satisfiable with the following model:\n"
       (form_string f);
     print_val modele;
     print_newline ()
-  with Unsat -> ()
+  with Unsat -> print_string "UNSAT\n\n"
 
 (* Exemples *)
 
