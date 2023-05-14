@@ -14,14 +14,15 @@ let rec remove el l = List.filter (( <> ) el) l
 (** Supprime toutes les occurences des éléments de els dans l *)
 let remove_all els l = List.fold_left (fun acc el -> remove el acc) l els
 
-let clause_string c = match c with
+let clause_string c =
+  match c with
   | [] -> "⊥"
-  | [0] -> "⊤"
+  | [ 0 ] -> "⊤"
   | _ -> String.concat " ⊕ " (List.map string_of_int c)
 
 let print_clause c = print_string (clause_string c)
-  
-let form_string f = 
+
+let form_string f =
   if f = [||] then "⊤"
   else String.concat " /\\ " (List.map clause_string @@ Array.to_list f)
 
