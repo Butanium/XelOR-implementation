@@ -7,6 +7,19 @@ open Util
 exception Unsat_causal of int * int list
 exception Unsat
 
+let check (f : formula) (modele : int array) =
+  let check_xors literals =
+    List.fold_left
+      (fun acc l -> acc + if l > 0 then modele.(l) else 1 - modele.(-l))
+      0 literals
+    mod 2
+    == 1
+  in
+  let rec aux f modele =
+    match f with [] -> true | c :: f2 -> check_xors c && aux f2 modele
+  in
+  aux (Array.to_list f) modele
+
 (** Renvoie le nombre d'occurences de i et de ¬i *)
 let rec count c i =
   match c with
@@ -183,6 +196,7 @@ let print_result f nb_vars =
       "SAT\n\nThe formula %s\nis satisfiable with the following model:\n"
       (form_string f);
     print_val modele;
+    assert (check f modele);
     print_newline ()
   with Unsat -> print_string "UNSAT\n\n"
 
