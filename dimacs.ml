@@ -14,7 +14,6 @@ let read_from_file filename =
 
 let rec parse_cnf cnf_so_far = function
   | [] -> List.rev cnf_so_far
-  | "0" :: l -> parse_cnf cnf_so_far l
   | l ->
       let rec parse_clause clause_so_far = function
         | [] -> parse_cnf (List.rev clause_so_far :: cnf_so_far) []
