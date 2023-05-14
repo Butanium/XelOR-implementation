@@ -4,7 +4,7 @@ type formula = clause array
 
 open Util
 
-exception Unsat_causal of int list
+exception Unsat_causal of int * (int list)
 exception Unsat
 
 (** Renvoie le nombre d'occurences de i et de ¬i *)
@@ -32,8 +32,6 @@ let neg_xor c = match c with [] -> [0] | [0] -> [] | l :: c2 -> -l :: c2
 let causality : int list array ref = ref [||]
 
 let add_causality i j =
-  (* Printf.eprintf "add_causality %d %d\n%!" i j; *)
-  (*todo remove*)
   !causality.(j) <- i :: !causality.(i)
 
 (** Remplace le littéral l (positif) par la clause g dans la clause c *)
@@ -51,7 +49,7 @@ let replace_neg_clause l g g_ind c_ind c =
   aux c
 
 (** Simplifie une clause si une variable apparaît plusieurs fois *)
-let simpl_clause ?(print_unsat_trace = false) nb_vars ind c =
+let simpl_clause ?(print_unsat_trace = 0) nb_vars ind c =
   let res = ref c in
   for i = 1 to nb_vars do
     let pos, neg = count !res i in
@@ -59,23 +57,23 @@ let simpl_clause ?(print_unsat_trace = false) nb_vars ind c =
     else if neg = 2 then res := remove (-i) !res
     else if pos = 1 && neg = 1 then res := neg_xor (remove_all [ i; -i ] !res)
   done;
-  if !res = [] && not print_unsat_trace then
-    raise @@ Unsat_causal (ind :: !causality.(ind));
+  if !res = [] && print_unsat_trace = 0 then
+    raise @@ Unsat_causal (1, (ind :: !causality.(ind)));
   !res
 
 (** Remplace le littéral l (positif) par la clause g dans la formule f,
     et simplifie la formule *)
-let replace_neg ?(print_unsat_trace = false) start l g (f : formula) nb_vars :
+let replace_neg ?(print_unsat_trace = 0) start l g (f : formula) nb_vars :
     unit =
   let save = Array.copy f in
-  if print_unsat_trace then
+  if print_unsat_trace > 0 then
     Printf.printf "Replace %d by %s = ¬(%s) in %s:\n" l
       (clause_string @@ neg_xor g)
       (clause_string g)
       (form_string (Array.sub save start (Array.length save - start)));
   mapi_in_place start (replace_neg_clause l g (start - 1)) f;
   mapi_in_place start (simpl_clause ~print_unsat_trace nb_vars) f;
-  if print_unsat_trace then (
+  if print_unsat_trace > 0 then (
     Array.iter2
       (fun c c' ->
         if c <> c' then (
@@ -89,9 +87,12 @@ let replace_neg ?(print_unsat_trace = false) start l g (f : formula) nb_vars :
 
 (** Renvoie une valuation satisfaisant la formule f en modifiant la
     valuation rho, ou une exception si la formule n'est pas satisfiable *)
-let rec xelor ?(print_unsat_trace = false) (f : formula) nb_vars : int array =
-  if print_unsat_trace then
-    Printf.printf "The formula %s\nis not satisfiable.\nProof:\n"
+let rec xelor ?(print_unsat_trace = 0) (f : formula) nb_vars causal_vars : int array =
+  (* print_unsat_trace vaut 0 si on ne doit pas afficher de trace d'insatisfiabilité,
+     1 dans le cas où la méthode utilisée aboutit à une clause vide,
+     et 2 dans le cas où une variable doit être à la faois vraie et fausse *)
+  if print_unsat_trace > 0 then
+    Printf.printf "The formula %s\nis not satisfiable.\n\nProof:\n\n"
     @@ form_string f;
   let rho = Array.make (nb_vars + 1) (-1) in
   causality := Array.make (Array.length f) [];
@@ -101,17 +102,33 @@ let rec xelor ?(print_unsat_trace = false) (f : formula) nb_vars : int array =
        if i >= Array.length f' then ()
        else
          match f'.(i) with
-         | [] -> if not print_unsat_trace then raise @@ Unsat_causal [] else ()
-         | [ l ] -> (match l, rho.(abs l) with
+         | [] -> if print_unsat_trace = 0 then raise @@ Unsat_causal (1, []) else ()
+         | [ l ] -> if print_unsat_trace > 0
+                      then Printf.printf "Processing clause: %d\n" l;
+                    (match l, rho.(abs l) with
                       | 0, _ -> ()
-                      | l, -1 when l > 0 -> rho.(l) <- 1
-                      | l, -1 -> rho.(-l) <- 0
+                      | l, -1 when l > 0 -> rho.(l) <- 1;
+                                            causal_vars.(abs l) <- i :: !causality.(i);
+                                            if print_unsat_trace = 2
+                                              then Printf.printf "The variable %d need to be true.\n"
+                                                   (abs l)
+                      | l, -1 -> rho.(-l) <- 0;
+                                 causal_vars.(abs l) <- i :: !causality.(i);
+                                 if print_unsat_trace = 2
+                                  then Printf.printf "The variable %d need to be false.\n"
+                                       (abs l)
                       | l, 1 when l > 0 -> ()
-                      | l, 0 -> ()
-                      | _ -> (* TODO affichage si print_unsat_trace *) raise Unsat);
+                      | l, 0 when l < 0 -> ()
+                      | _ -> if print_unsat_trace = 2
+                               then (Printf.printf "The variable %d need to be %s whereas it was needed to be %s.\n"
+                                    (abs l)
+                                    (if l > 0 then "true" else "false")
+                                    (if l > 0 then "false" else "true"));
+                             if print_unsat_trace = 0
+                               then raise (Unsat_causal (2, i :: (causal_vars.(abs l) @ !causality.(i)))));
                     aux (i + 1)
          | l1 :: l2 :: c2 ->
-             if print_unsat_trace then (
+             if print_unsat_trace > 0 then (
                Printf.printf "Processing clause: ";
                print_clause f'.(i);
                print_newline ());
@@ -123,15 +140,27 @@ let rec xelor ?(print_unsat_trace = false) (f : formula) nb_vars : int array =
              replace_neg ~print_unsat_trace (i + 1) l g f' nb_vars;
              aux (i + 1);
              let val_l = 1 - eval_xor g rho in
-             if rho.(l) = 1 - val_l then (* TODO affichage si print_unsat_trace *) raise Unsat
-             else rho.(l) <- val_l
+             if rho.(l) = 1 - val_l
+               then (if print_unsat_trace = 2
+                       then (Printf.printf "The variable %d need to be %s whereas it was needed to be %s.\n"
+                            l
+                            (if val_l = 1 then "true" else "false")
+                            (if val_l = 1 then "false" else "true"));
+                     if print_unsat_trace = 0
+                       then raise (Unsat_causal (2, i :: (causal_vars.(l) @ !causality.(i)))))
+             else (rho.(l) <- val_l;
+                   causal_vars.(l) <- i :: !causality.(i);
+                   if print_unsat_trace = 2
+                     then Printf.printf "The variable %d need to be %s.\n"
+                          l
+                          (if val_l = 1 then "true" else "false"))
      in
      aux 0
-   with Unsat_causal clause_ids when not print_unsat_trace ->
+   with Unsat_causal (unsat_kind, clause_ids) when print_unsat_trace = 0 ->
      let clauses = List.map (fun i -> f.(i)) clause_ids in
      let f'' = Array.of_list clauses in
-     xelor ~print_unsat_trace:true f'' nb_vars |> ignore);
-  if print_unsat_trace then (
+     xelor ~print_unsat_trace:unsat_kind f'' nb_vars causal_vars |> ignore);
+  if print_unsat_trace > 0 then (
     print_endline "Therefore there is no solution!\n";
     raise Unsat);
   rho
@@ -139,7 +168,8 @@ let rec xelor ?(print_unsat_trace = false) (f : formula) nb_vars : int array =
 let print_result f nb_vars =
   print_newline ();
   try
-    let modele = xelor f nb_vars in
+    let causal_vars = Array.make (nb_vars+1) [] in
+    let modele = xelor f nb_vars causal_vars in
     Printf.printf "SAT\n\nThe formula %s\nis satisfiable with the following model:\n"
       (form_string f);
     print_val modele;
