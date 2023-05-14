@@ -13,7 +13,7 @@ let check (f : formula) (modele : int array) =
       (fun acc l -> acc + if l > 0 then modele.(l) else 1 - modele.(-l))
       0 literals
     mod 2
-    == 1
+    = 1
   in
   let rec aux f modele =
     match f with [] -> true | c :: f2 -> check_xors c && aux f2 modele
@@ -42,6 +42,10 @@ let rec eval_xor f rho =
 let neg_xor c = match c with [] -> [ 0 ] | [ 0 ] -> [] | l :: c2 -> -l :: c2
 (* On note [0] pour la clause vraie, tandis que [] est la clause vide qui est fausse *)
 
+(* a l'indice i contient la liste des clauses qui influent sur la
+   clause i avec des remplacements directs ou indirects.
+   Utilisé pour print la trace en selectionnant l'ensemble des clauses
+   qui font partie de la preuve de non satisfabilité *)
 let causality : int list array ref = ref [||]
 let add_causality i j = !causality.(j) <- i :: !causality.(i)
 
@@ -97,9 +101,10 @@ let replace_neg ?(print_unsat_trace = 0) start l g (f : formula) nb_vars : unit
     Printf.printf "Remaining: %s\n\n" (if s = "" then "⊥" else s))
 
 (** Renvoie une valuation satisfaisant la formule f en modifiant la
-    valuation rho, ou une exception si la formule n'est pas satisfiable *)
-let rec xelor ?(print_unsat_trace = 0) (f : formula) nb_vars causal_vars :
-    int array =
+    valuation rho, ou une exception si la formule n'est pas satisfiable 
+    
+    *)
+let rec xelor ?(print_unsat_trace = 0) (f : formula) nb_vars : int array =
   (* print_unsat_trace vaut 0 si on ne doit pas afficher de trace d'insatisfiabilité,
      1 dans le cas où la méthode utilisée aboutit à une clause vide,
      et 2 dans le cas où une variable doit être à la faois vraie et fausse *)
@@ -108,6 +113,10 @@ let rec xelor ?(print_unsat_trace = 0) (f : formula) nb_vars causal_vars :
     @@ form_string f;
   let rho = Array.make (nb_vars + 1) (-1) in
   causality := Array.make (Array.length f) [];
+  (* causal_vars contient l'ensemble des clauses qui
+     ont déterminé la valeur d'une variable. Utilisé pour la trace.
+     causal_vats.(i) = causality.(j) avec j la clause qui a déterminé la valeur de i *)
+  let causal_vars = Array.make (nb_vars + 1) [] in
   let f' = Array.copy f in
   (try
      let rec aux i =
@@ -181,17 +190,18 @@ let rec xelor ?(print_unsat_trace = 0) (f : formula) nb_vars causal_vars :
    with Unsat_causal (unsat_kind, clause_ids) when print_unsat_trace = 0 ->
      let clauses = List.map (fun i -> f.(i)) clause_ids in
      let f'' = Array.of_list clauses in
-     xelor ~print_unsat_trace:unsat_kind f'' nb_vars causal_vars |> ignore);
+     xelor ~print_unsat_trace:unsat_kind f'' nb_vars |> ignore);
   if print_unsat_trace > 0 then (
     print_endline "Therefore there is no solution!\n";
     raise Unsat);
-  rho
+  (* Abs because variable with value -1 were assumed to be true
+     during the proof *)
+  Array.map abs rho
 
 let print_result f nb_vars =
   print_newline ();
   try
-    let causal_vars = Array.make (nb_vars + 1) [] in
-    let modele = xelor f nb_vars causal_vars in
+    let modele = xelor f nb_vars in
     Printf.printf
       "SAT\n\nThe formula %s\nis satisfiable with the following model:\n"
       (form_string f);
