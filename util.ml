@@ -29,4 +29,4 @@ let form_string f =
 let print_form f = print_string (form_string f)
 
 let print_val rho =
-  Array.iteri (fun i x -> if i <> 0 then Printf.printf "%d: %d\n" i (abs x)) rho
+  Array.iteri (fun i x -> if i <> 0 then Printf.printf "%d: %d\n" i x) rho
